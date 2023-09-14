@@ -1,0 +1,247 @@
+---
+title: "Disease Pattern Recognition using Rippley's Estimator in R"
+author: "Nengak Emmanuel Goltong"
+output:
+  html_document:
+    df_print: paged
+---
+
+This is an exercise using user-defined functions to determine disease patterns in R. In this exercise, we shall write R codes to obtain disease pattern using spatial data.
+
+Rippley's estimator assumes a rectangular window for the area under consideration. We therefore, write a function that accepts coordinates of a rectangular window (as Window) and coordinates of patients' locations to determine the pattern of disease spread whether regular, sparse or dense.
+
+```{r rippley_plot}
+rippley_plot<- function(D,w){
+  # D is the coordinates of the rectangular window
+  # w is the coordinates of patients' locations
+  
+  # initial step is to check if the arguments 'D' and 'w' are matrices
+  if(is.matrix(D)==TRUE & is.matrix(w)==TRUE){
+    
+    # Calculating the Euclidean distances of the two sides of the rectangular window
+    a<-sqrt(sum((D[2,]-D[1,])^2))
+    b<- sqrt(sum((D[3,]-D[2,])^2))
+    
+    # Calculating the area of the rectangular window
+    A<- a*b
+    
+    # Calculating the length of the diagonal of the rectangular window
+    # Note that this is the longest distance in the rectangular window
+    d<- sqrt(sum((D[3,]-D[1,])^2))
+    
+    # Specifying the sequence for incrementing the radius used to calculate
+    # distance from the nearest neighbour
+    t<- seq(from=d/100,to=d/4, length=50)
+    Pi<- acos(-1)
+    x0<- D[1,1]; y0<- D[1,2]; x1<- D[3,1]; y1<- D[3,2]
+    
+    Kk<- function(w,t,D){
+      n<- 1:nrow(w)
+      wij<-0
+      # Specifying the edges of the rectangular window
+      x0<- D[1,1]; y0<- D[1,2]
+      x1<- D[3,1]; y1<- D[3,2]
+      
+      for(i in n){
+        # We shall compute the distance between any point and every other point
+        # within the rectangular window
+        for(j in n[-i]){
+          
+          x<- w[i,1]
+          y<- w[i,2]
+          rij<-sqrt(sum((w[i,]-w[j,])^2))
+          if(rij<=t){
+            # At the boundary of the window
+            # And at the corner points of the window
+            if(x==x0){
+              if(y==y0 | y==y1) theta<- 3/2*Pi
+              if((y1-y)>=t & (y-y0)>=t) theta<- Pi
+            }
+            if(x==x1){
+              if(y==y0 | y==y1) theta<- 3/2*Pi
+              if((y1-y)>=t & (y-y0)>=t) theta<- Pi
+            }
+            if((x-x0)>=t & (x1-x)>=t){
+              if(y==y0 | y==y1) theta<- Pi
+            }
+            
+            # For points inside the window
+            if(x>x0 & (x-x0)<t){
+              if(y>y0 & (y-y0)<t) theta<- Pi/2 + acos((x-x0)/t) + acos((y-y0)/t)
+              if((y-y0)>=t & y<=(y1-t)) theta<- 2*acos((x-x0)/t)
+              if(y>(y1-t) & y<y1){
+                theta<- Pi/2 + acos((y1-y)/t) + acos((x-x0)/t)}
+            }
+            if((x-x0)>=t & x<=(x1-t)){
+              if(y>y0 & (y-y0)<t) theta<- 2*acos((y-y0)/t)
+              if((y-y0)>=t & y<=(y1-t)) theta<- 0
+              if(y>(y1-t) & y<y1) theta<- 2*acos((y1-y)/t)
+            }
+            if(x>(x1-t) & x<x1){
+              if(y>y0 & (y-y0)<t) theta<- Pi/2 + acos((y-y0)/t) + acos((x1-x)/t)
+              if((y-y0)>=t & y<=(y1-t)) theta<- 2*acos((x1-x)/t)
+              if(y>(y1-t) & y<y1) theta<- Pi/2 + acos((x1-x)/t) + acos((y1-y)/t)
+            }
+            wij<- wij + 2*Pi/(2*Pi-theta)
+            
+          }
+          else wij<- wij
+        }
+      }
+      wij
+    }
+    ysam<- array(data = NA, dim = length(t))
+    for(i in 1:length(t)){
+      K<- A*Kk(w,t[i],D)/(nrow(w)*(nrow(w)-1))
+      ysam[i]<- sqrt(K/Pi)
+    }
+    #library(splines)
+    #ty1<- smooth.spline(t,ysam)
+    
+    forest<- matrix(data = NA, nrow = length(t),ncol = 101)
+    sim.w<- matrix(data = NA, nrow = nrow(w),ncol = 2)
+    sim.w[,1]<-runif(n=nrow(w),min = x0, max = x1)
+    sim.w[,2]<-runif(n=nrow(w),min = y0, max = y1)
+    for(i in 1:length(t)){
+      K<- A*Kk(sim.w,t[i],D)/(nrow(w)*(nrow(w)-1))
+      forest[i,1]<- sqrt(K/Pi)
+    }
+    
+    for(j in 2:99){
+      sim.w[,1]<-runif(n=nrow(w),min = x0, max = x1)
+      sim.w[,2]<-runif(n=nrow(w),min = y0, max = y1)
+      for(i in 1:length(t)){
+        
+        K<- A*Kk(sim.w,t[i],D)/(nrow(w)*(nrow(w)-1))
+        forest[i,j]<- sqrt(K/Pi)
+      }
+    }
+    
+    for(i in 1:length(t)){
+      forest[i,100]<- min(forest[i,1:99])
+      forest[i,101]<- max(forest[i,1:99])
+    }
+    
+    
+    plot(t,ysam,type='l',xlab = 't',ylab = 'L(t)',col=1,lwd=2,
+         main = deparse(substitute(w)))
+    #ylim=range(0,max(ysam)))
+    
+    #for(i in 1:99){
+    #ty<- smooth.spline(t,forest[,i])
+    # lines(t,forest[,i])
+    #}
+    
+    lines(t,lty=2,forest[,100],lwd=2,col=2)
+    lines(t,lty=2,forest[,101],lwd=2,col=2)
+    legend.txt<-c("Lower & Upper Envelops","Point Pattern")
+    legend("topleft",legend = legend.txt,col = 2:1,lty=2:1)
+  }
+  
+  else stop("D must be a matrix i.e. a set of coordinates\n
+            w must also be a matrix i.e. a set of coordinates for locations")
+}
+```
+
+After writing the function to compute all the necessary calculations and plot, we need data to test the functionality of our code. The R code for reading in the data is as follows:
+```{r input_data}
+# Reading in the coordinates for each patient's location
+Igabi<-rbind(c(7.471633,10.633025),c(7.666651,10.916986),c(7.632595,10.850440),
+             c(7.625814,10.845086),c(7.766627,10.783734),c(7.683822,10.817522),
+             c(7.345764,10.647108),c(7.338226,10.655250),c(7.666648,10.916800),
+             c(7.335663,10.643038),c(7.677754,10.821805),c(7.663557,10.869396),
+             c(7.416433,10.968093),c(7.666450,10.916603),c(7.333747,10.882432),
+             c(7.481472,10.635320),c(7.566922,10.817247),c(7.551693,10.788693),
+             c(7.480084,10.893735),c(7.516599,10.616927),c(7.480718,10.632456),
+             c(7.549097,10.785124),c(7.583340,10.800115),c(7.365869,10.916339),
+             c(7.762582,10.778737),c(7.756276,10.785756),c(7.763533,10.788255),
+             c(7.753778,10.778261),c(7.759131,10.771836),c(7.565851,10.820459),
+             c(7.472727,10.636978),c(7.554549,10.785362),c(7.565851,10.820459),
+             c(7.473721,10.540582),c(7.479224,10.537459),c(7.483058,10.868155),
+             c(7.493171,10.874104),c(7.480265,10.543110),c(7.488295,10.544746),
+             c(7.216362,10.583116),c(7.212793,10.592395),c(7.322010,10.666635),
+             c(7.520727,10.638215),c(7.490240,10.643794),c(7.489954,10.644365),
+             c(7.480266,10.638034),c(7.735575,10.779688),c(7.547916,10.605276),
+             c(7.387207,10.665683),c(7.547590,10.781053),c(7.733281,10.683488),
+             c(7.733852,10.684154),c(7.345764,10.644545))
+
+# This is the coordinates for the rectangular window
+IgabiWindow<-rbind(c(7.20,10.50),c(7.77,10.50),c(7.77,10.97),c(7.20,10.97))
+
+Igabi[,1]<- 111*(Igabi[,1]-IgabiWindow[1,1])
+# Distance between two lattitudes is approximately 111km
+Igabi[,2]<- 111.321*(Igabi[,2]-IgabiWindow[1,2])
+# Distance between two longitudes is approximately 111.321km
+IgabiWindow[,1]<- 111*(IgabiWindow[,1]-IgabiWindow[1,1])
+IgabiWindow[,2]<- 111.321*(IgabiWindow[,2]-IgabiWindow[1,2])
+IgabiWindow
+```
+
+After reading in the data, we need to plot the data and the rectangular window to ensure that all data points are located within the rectangular window.
+```{r data_validation}
+plot(Igabi[,1],Igabi[,2],pch=20,xlim = range(0,max(Igabi[,1])),
+     ylim = range(0,max(Igabi[,2])), xlab = "Distance (km)", ylab = "Distance (km)",
+     main = "Igabi Local Government ")
+identify(Igabi[,1],Igabi[,2])
+polygon(IgabiWindow[,1],IgabiWindow[,2])
+```
+
+Below is the plot for Igabi Local Government Area
+```{r Igabi_plot}
+# Using the Rippley estimator to determine disease spread pattern using the plot
+rippley_plot(D=IgabiWindow,w=Igabi)
+```
+
+
+We now use another data set to test run our code.
+```{r input_another_data}
+# Inputing another data 
+Zaria<- rbind(c(7.766274,11.001718), c(7.740992,11.010343), c(7.755566,11.010343), 
+              c(7.716067,11.000825), c(7.715175,11.011235), c(7.728262,11.016589),
+              c(7.745453,11.027594), c(7.714877,11.003800), c(7.705954,11.005584),
+              c(7.729451,11.007369), c(7.753781,11.025512), c(7.774304,11.007369),
+              c(7.755269,11.002610), c(7.761217,11.005882), c(7.741289,11.005287),
+              c(7.748428,11.007666), c(7.748725,11.012128), c(7.762110,11.000230),
+              c(7.735935,10.999933), c(7.723503,10.993984), c(7.701790,11.067771),
+              c(7.699661,10.635530), c(7.718982,11.030271), c(7.707977,11.031461),
+              c(7.711546,11.062096), c(7.706549,11.052781), c(7.701552,11.061585),
+              c(7.692142,11.058568), c(7.695366,11.053257), c(7.694414,11.071579),
+              c(7.686800,11.048974), c(7.688941,11.042466), c(7.693224,11.046832),
+              c(7.687751,11.054922), c(7.685074,11.042763), c(7.680851,11.048974),
+              c(7.683885,11.037410), c(7.687751,11.042787), c(7.696555,11.042549),
+              c(7.699887,11.048498), c(7.700125,11.057540), c(7.747476,11.069675),
+              c(7.754852,11.068961), c(7.748904,11.075219), c(7.750569,11.063964),
+              c(7.743193,11.065392), c(7.712974,11.043025), c(7.712498,11.050639),
+              c(7.747952,11.080930), c(7.741765,11.076647), c(7.742955,11.080930),
+              c(7.688346,11.031461), c(7.676449,11.033543), c(7.680613,11.038302),
+              c(7.650074,11.016790), c(7.655613,11.016342), c(7.673772,11.026702),
+              c(7.660852,11.022759), c(7.650886,11.023007), c(7.704170,11.047070),
+              c(7.704408,11.042073), c(7.717750,11.086023), c(7.720730,11.083192),
+              c(7.718317,11.080177), c(7.722388,11.080478), c(7.636134,11.031772),
+              c(7.682992,11.083785), c(7.780015,10.972867), c(7.712739,11.086961),
+              c(7.715905,11.080629), c(7.781502,11.068319))
+
+
+ZariaWindow<- rbind(c(7.608,10.62),c(7.802,10.62),c(7.802,11.137),c(7.608,11.137))
+
+Zaria[,1]<- 111*(Zaria[,1]-ZariaWindow[1,1])
+# Distance between two lattitudes is approximately 111km
+Zaria[,2]<- 111.321*(Zaria[,2]-ZariaWindow[1,2])
+# Distance between two longitudes is approximately 111.321km
+ZariaWindow[,1]<- 111*(ZariaWindow[,1]-ZariaWindow[1,1])
+ZariaWindow[,2]<- 111.321*(ZariaWindow[,2]-ZariaWindow[1,2])
+```
+
+Similarly, we plot the data and the rectangular window to ensure that all data points are located within the rectangular window.
+```{r zaria_data}
+plot(Zaria[,1],Zaria[,2],pch= 20,
+     xlim = range(0,max(Zaria[,1])),
+     ylim = range(0,max(Zaria[,2])), 
+     xlab = "Distance (km)", ylab = "Distance (km)",
+     main = " Zaria Local Government")
+```
+
+Below is the plot for Igabi Local Government Area
+```{r rippley_plot_zaria}
+rippley_plot(D=ZariaWindow,w=Zaria)
+```
