@@ -239,9 +239,11 @@ plot(Zaria[,1],Zaria[,2],pch= 20,
      ylim = range(0,max(Zaria[,2])), 
      xlab = "Distance (km)", ylab = "Distance (km)",
      main = " Zaria Local Government")
+identify(Zaria[,1],Zaria[,2])
+polygon(ZariaWindow[,1],ZariaWindow[,2])
 ```
 
-Below is the plot for Igabi Local Government Area
+Below is the plot for Zaria Local Government Area
 ```{r rippley_plot_zaria}
 rippley_plot(D=ZariaWindow,w=Zaria)
 ```
